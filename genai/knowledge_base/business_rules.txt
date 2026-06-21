@@ -1,0 +1,195 @@
+========================================
+BUSINESS RULES
+========================================
+
+GENERAL
+- Use DuckDB SQL syntax.
+- Return SQL only.
+- No markdown.
+- No explanations.
+- Use SELECT statements only.
+- Add LIMIT 20 unless user specifies otherwise.
+
+----------------------------------------
+ORDER METRICS
+----------------------------------------
+
+Total Orders
+= COUNT(DISTINCT order_id)
+
+Always use:
+COUNT(DISTINCT order_id)
+
+Never use:
+COUNT(*)
+
+----------------------------------------
+CUSTOMER METRICS
+----------------------------------------
+
+Unique Customers
+= COUNT(DISTINCT customer_unique_id)
+
+Customer analysis should use:
+gold_main_gold.dim_customer
+
+Never count customers using customer_id.
+
+----------------------------------------
+REVENUE METRICS
+----------------------------------------
+
+Total Revenue
+= SUM(payment_value)
+
+Source:
+gold_main_gold.fact_payments
+
+Category Revenue
+= SUM(order_items.price)
+
+Source:
+silver.order_items
+
+Seller Revenue
+= SUM(order_items.price)
+
+Source:
+silver.order_items
+
+Average Order Value (AOV)
+= AVG(total_order_value)
+
+Source:
+gold_main_gold.fact_orders
+
+----------------------------------------
+PRODUCT ANALYSIS
+----------------------------------------
+
+Product Category:
+gold_main_gold.dim_product.product_category
+
+Product Revenue:
+SUM(order_items.price)
+
+Most Ordered Product:
+dim_product.times_ordered
+
+Use:
+silver.order_items
+when product-level analysis is required.
+
+----------------------------------------
+SELLER ANALYSIS
+----------------------------------------
+
+Use:
+gold_main_gold.dim_seller
++
+silver.order_items
+
+Seller Revenue:
+SUM(order_items.price)
+
+Seller Orders:
+COUNT(DISTINCT order_id)
+
+----------------------------------------
+DELIVERY ANALYSIS
+----------------------------------------
+
+Average Delivery Time:
+AVG(actual_delivery_days)
+
+Late Delivery:
+delivery_status = 'late'
+
+On-Time Delivery:
+delivery_status = 'on_time'
+
+----------------------------------------
+REVIEW ANALYSIS
+----------------------------------------
+
+Average Review Score:
+AVG(review_score)
+
+Review Score Range:
+1 - 5
+
+----------------------------------------
+DEFAULT FILTERS
+----------------------------------------
+
+Prefer:
+
+WHERE order_status = 'delivered'
+
+unless user explicitly asks for all statuses.
+
+----------------------------------------
+VALID JOINS
+----------------------------------------
+
+fact_orders.customer_id
+=
+dim_customer.customer_key
+
+fact_payments.customer_id
+=
+dim_customer.customer_key
+
+fact_orders.order_id
+=
+fact_payments.order_id
+
+order_items.order_id
+=
+fact_orders.order_id
+
+order_items.product_id
+=
+dim_product.product_id
+
+order_items.seller_id
+=
+dim_seller.seller_id
+
+----------------------------------------
+AVOID
+----------------------------------------
+
+Never aggregate total_order_value
+after joining order_items.
+
+Bad:
+
+SUM(total_order_value)
+after joining order_items
+
+Reason:
+causes double counting.
+
+Never join on columns that do not exist.
+
+Always use the VALID JOINS section.
+
+Avoid unnecessary joins when the metric
+already exists in the fact table.
+
+SCHEMA IS THE SOURCE OF TRUTH.
+
+If a column does not exist in schema,
+DO NOT use it.
+
+Before generating SQL:
+1. Find required tables.
+2. Verify columns exist.
+3. Verify join keys exist.
+4. Then generate SQL.
+
+Never invent:
+- column names
+- table names
+- join keys

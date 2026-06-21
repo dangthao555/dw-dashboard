@@ -1,0 +1,245 @@
+# =========================
+# BUSINESS GLOSSARY
+# =========================
+
+revenue
+= SUM(payment_value)
+
+doanh thu
+= SUM(payment_value)
+
+sales
+= SUM(payment_value)
+
+gross revenue
+= SUM(payment_value)
+
+payment
+= payment_value
+
+payment value
+= payment_value
+
+# =========================
+# ORDERS
+# =========================
+
+orders
+= COUNT(DISTINCT order_id)
+
+order count
+= COUNT(DISTINCT order_id)
+
+total orders
+= COUNT(DISTINCT order_id)
+
+đơn hàng
+= COUNT(DISTINCT order_id)
+
+số đơn
+= COUNT(DISTINCT order_id)
+
+# =========================
+# CUSTOMERS
+# =========================
+
+customer
+= customer_unique_id
+
+unique customer
+= COUNT(DISTINCT customer_unique_id)
+
+khách hàng
+= customer_unique_id
+
+khách hàng duy nhất
+= COUNT(DISTINCT customer_unique_id)
+
+repeat customer
+= customer_type='repeat'
+
+one time customer
+= customer_type='one_time'
+
+# =========================
+# PRODUCTS
+# =========================
+
+product
+= product_id
+
+products
+= product_id
+
+sản phẩm
+= product_id
+
+top products
+= dim_product.times_ordered
+
+best selling products
+= dim_product.times_ordered
+
+# =========================
+# CATEGORY
+# =========================
+
+category
+= product_category
+
+product category
+= product_category
+
+danh mục
+= product_category
+
+category revenue
+= SUM(order_items.price)
+
+doanh thu danh mục
+= SUM(order_items.price)
+
+top categories
+= product_category
+
+best selling categories
+= product_category
+
+# =========================
+# SELLER
+# =========================
+
+seller
+= seller_id
+
+merchant
+= seller_id
+
+người bán
+= seller_id
+
+top sellers
+= seller_id
+
+seller revenue
+= SUM(order_items.price)
+
+# =========================
+# LOCATION
+# =========================
+
+state
+= customer_state OR seller_state
+
+province
+= customer_state OR seller_state
+
+bang
+= customer_state OR seller_state
+
+city
+= customer_city OR seller_city
+
+thành phố
+= customer_city OR seller_city
+
+# =========================
+# PAYMENT
+# =========================
+
+payment type
+= payment_type
+
+payment method
+= payment_type
+
+phương thức thanh toán
+= payment_type
+
+installments
+= payment_installments
+
+trả góp
+= payment_installments
+
+# =========================
+# DELIVERY
+# =========================
+
+delivery
+= actual_delivery_days
+
+shipping
+= actual_delivery_days
+
+giao hàng
+= actual_delivery_days
+
+delivery delay
+= delivery_delay_days
+
+late delivery
+= delivery_delay_days
+
+giao trễ
+= delivery_delay_days
+
+delivery status
+= delivery_status
+
+# =========================
+# REVIEW
+# =========================
+
+review
+= review_score
+
+rating
+= review_score
+
+đánh giá
+= review_score
+
+customer satisfaction
+= review_score
+
+# =========================
+# TIME
+# =========================
+
+monthly revenue
+= order_month_date + payment_value
+
+yearly revenue
+= order_year + payment_value
+
+doanh thu theo tháng
+= order_month_date + payment_value
+
+doanh thu theo năm
+= order_year + payment_value
+
+trend
+= order_month_date
+
+xu hướng
+= order_month_date
+
+growth
+= order_month_date
+
+tăng trưởng
+= order_month_date
+
+# =========================
+# DEFAULT FILTER
+# =========================
+
+delivered orders
+= order_status='delivered'
+
+successful orders
+= order_status='delivered'
+
+đơn thành công
+= order_status='delivered'

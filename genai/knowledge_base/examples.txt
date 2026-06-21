@@ -1,0 +1,289 @@
+# OLIST SQL EXAMPLES
+
+Question:
+Doanh thu theo tháng
+
+SQL:
+SELECT
+order_month_date,
+ROUND(SUM(payment_value),2) AS revenue,
+COUNT(DISTINCT order_id) AS total_orders
+FROM gold_main_gold.fact_payments
+WHERE order_status='delivered'
+GROUP BY order_month_date
+ORDER BY order_month_date;
+
+---
+
+Question:
+Doanh thu theo năm
+
+SQL:
+SELECT
+order_year,
+ROUND(SUM(payment_value),2) AS revenue
+FROM gold_main_gold.fact_payments
+WHERE order_status='delivered'
+GROUP BY order_year
+ORDER BY order_year;
+
+---
+
+Question:
+Top 10 danh mục doanh thu cao nhất
+
+SQL:
+SELECT
+dp.product_category,
+COUNT(DISTINCT oi.order_id) AS total_orders,
+ROUND(SUM(oi.price),2) AS revenue
+FROM silver.order_items oi
+JOIN gold_main_gold.dim_product dp
+ON oi.product_id=dp.product_id
+JOIN gold_main_gold.fact_orders fo
+ON oi.order_id=fo.order_id
+WHERE fo.order_status='delivered'
+GROUP BY dp.product_category
+ORDER BY revenue DESC
+LIMIT 10;
+
+---
+
+Question:
+Top 10 danh mục bán chạy nhất
+
+SQL:
+SELECT
+dp.product_category,
+COUNT(DISTINCT oi.order_id) AS total_orders
+FROM silver.order_items oi
+JOIN gold_main_gold.dim_product dp
+ON oi.product_id=dp.product_id
+JOIN gold_main_gold.fact_orders fo
+ON oi.order_id=fo.order_id
+WHERE fo.order_status='delivered'
+GROUP BY dp.product_category
+ORDER BY total_orders DESC
+LIMIT 10;
+
+---
+
+Question:
+Top 10 sản phẩm được đặt hàng nhiều nhất
+
+SQL:
+SELECT
+product_id,
+product_category,
+times_ordered
+FROM gold_main_gold.dim_product
+ORDER BY times_ordered DESC
+LIMIT 10;
+
+---
+
+Question:
+Doanh thu theo phương thức thanh toán
+
+SQL:
+SELECT
+payment_type,
+COUNT(DISTINCT order_id) AS total_orders,
+ROUND(SUM(payment_value),2) AS revenue
+FROM gold_main_gold.fact_payments
+WHERE order_status='delivered'
+GROUP BY payment_type
+ORDER BY revenue DESC;
+
+---
+
+Question:
+Top bang có nhiều khách hàng nhất
+
+SQL:
+SELECT
+customer_state,
+COUNT(DISTINCT customer_unique_id) AS unique_customers
+FROM gold_main_gold.dim_customer
+GROUP BY customer_state
+ORDER BY unique_customers DESC
+LIMIT 10;
+
+---
+
+Question:
+Top thành phố có nhiều khách hàng nhất
+
+SQL:
+SELECT
+customer_city,
+COUNT(DISTINCT customer_unique_id) AS unique_customers
+FROM gold_main_gold.dim_customer
+GROUP BY customer_city
+ORDER BY unique_customers DESC
+LIMIT 10;
+
+---
+
+Question:
+Khách hàng mới và khách hàng quay lại
+
+SQL:
+SELECT
+customer_type,
+COUNT(*) AS total_customers
+FROM gold_main_gold.dim_customer
+GROUP BY customer_type
+ORDER BY total_customers DESC;
+
+---
+
+Question:
+Top khách hàng mua nhiều đơn nhất
+
+SQL:
+SELECT
+dc.customer_unique_id,
+COUNT(DISTINCT fo.order_id) AS total_orders
+FROM gold_main_gold.fact_orders fo
+JOIN gold_main_gold.dim_customer dc
+ON fo.customer_id = dc.customer_key
+WHERE fo.order_status='delivered'
+GROUP BY dc.customer_unique_id
+ORDER BY total_orders DESC
+LIMIT 10;
+
+---
+
+Question:
+Điểm đánh giá trung bình theo trạng thái giao hàng
+
+SQL:
+SELECT
+delivery_status,
+ROUND(AVG(review_score),2) AS avg_review_score
+FROM gold_main_gold.fact_orders
+WHERE review_score IS NOT NULL
+GROUP BY delivery_status
+ORDER BY avg_review_score DESC;
+
+---
+
+Question:
+Điểm đánh giá trung bình theo danh mục
+
+SQL:
+SELECT
+dp.product_category,
+ROUND(AVG(fo.review_score),2) AS avg_review_score
+FROM gold_main_gold.fact_orders fo
+JOIN silver.order_items oi
+ON fo.order_id=oi.order_id
+JOIN gold_main_gold.dim_product dp
+ON oi.product_id=dp.product_id
+WHERE fo.review_score IS NOT NULL
+GROUP BY dp.product_category
+ORDER BY avg_review_score DESC
+LIMIT 10;
+
+---
+
+Question:
+Thời gian giao hàng trung bình
+
+SQL:
+SELECT
+ROUND(AVG(actual_delivery_days),2) AS avg_delivery_days
+FROM gold_main_gold.fact_orders
+WHERE order_status='delivered';
+
+---
+
+Question:
+Tỷ lệ giao hàng trễ
+
+SQL:
+SELECT
+delivery_status,
+COUNT(DISTINCT order_id) AS total_orders
+FROM gold_main_gold.fact_orders
+GROUP BY delivery_status
+ORDER BY total_orders DESC;
+
+---
+
+Question:
+Top seller doanh thu cao nhất
+
+SQL:
+SELECT
+ds.seller_id,
+ds.seller_state,
+ROUND(SUM(oi.price),2) AS revenue
+FROM silver.order_items oi
+JOIN gold_main_gold.dim_seller ds
+ON oi.seller_id=ds.seller_id
+JOIN gold_main_gold.fact_orders fo
+ON oi.order_id=fo.order_id
+WHERE fo.order_status='delivered'
+GROUP BY ds.seller_id,ds.seller_state
+ORDER BY revenue DESC
+LIMIT 10;
+
+---
+
+Question:
+Top seller nhiều đơn hàng nhất
+
+SQL:
+SELECT
+ds.seller_id,
+COUNT(DISTINCT oi.order_id) AS total_orders
+FROM silver.order_items oi
+JOIN gold_main_gold.dim_seller ds
+ON oi.seller_id=ds.seller_id
+GROUP BY ds.seller_id
+ORDER BY total_orders DESC
+LIMIT 10;
+
+---
+
+Question:
+Doanh thu theo bang khách hàng
+
+SQL:
+SELECT
+dc.customer_state,
+ROUND(SUM(fp.payment_value),2) AS revenue
+FROM gold_main_gold.fact_payments fp
+JOIN gold_main_gold.dim_customer dc
+ON fp.customer_id=dc.customer_key
+WHERE fp.order_status='delivered'
+GROUP BY dc.customer_state
+ORDER BY revenue DESC
+LIMIT 10;
+
+---
+
+Question:
+Top danh mục có giá bán trung bình cao nhất
+
+SQL:
+SELECT
+product_category,
+ROUND(AVG(avg_price),2) AS avg_price
+FROM gold_main_gold.dim_product
+GROUP BY product_category
+ORDER BY avg_price DESC
+LIMIT 10;
+
+---
+
+Question:
+Giá trị đơn hàng trung bình (AOV)
+
+SQL:
+SELECT
+ROUND(AVG(total_order_value),2) AS avg_order_value
+FROM gold_main_gold.fact_orders
+WHERE order_status='delivered';

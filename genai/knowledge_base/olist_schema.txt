@@ -1,0 +1,164 @@
+
+============================================================
+TABLE: gold_main_gold.dim_customer
+============================================================
+- customer_key (VARCHAR) | unique=96096
+- customer_unique_id (VARCHAR) | unique=96096
+- customer_city (VARCHAR) | unique=4119
+- customer_state (VARCHAR) | unique=27 | values=PA, DF, RJ, PR, SE, RN, AP, PI, BA, ES, PB, RS, GO, AC, SC, MA, MG, CE, RO, RR
+- total_orders (BIGINT) | unique=10
+- recency_days (BIGINT) | unique=612
+- first_order_date (TIMESTAMP) | unique=93115
+- last_order_date (TIMESTAMP) | unique=93112
+- customer_type (VARCHAR) | unique=3 | values=repeat, one_time, no_order
+
+============================================================
+TABLE: gold_main_gold.dim_product
+============================================================
+- product_key (VARCHAR) | unique=32951
+- product_id (VARCHAR) | unique=32951
+- product_category (VARCHAR) | unique=74
+- product_category_pt (VARCHAR) | unique=74
+- product_weight_g (DOUBLE) | unique=2204
+- product_length_cm (DOUBLE) | unique=99
+- product_height_cm (DOUBLE) | unique=102
+- product_width_cm (DOUBLE) | unique=95
+- product_photos_qty (DOUBLE) | unique=19
+- times_ordered (BIGINT) | unique=138
+- avg_price (DOUBLE) | unique=7320
+
+============================================================
+TABLE: gold_main_gold.dim_seller
+============================================================
+- seller_key (VARCHAR) | unique=3095
+- seller_id (VARCHAR) | unique=3095
+- seller_city (VARCHAR) | unique=611
+- seller_state (VARCHAR) | unique=23 | values=DF, MG, MA, CE, RO, RS, GO, AC, ES, BA, PB, PE, MS, AM, RJ, PR, RN, PA, SP, MT
+- seller_zip_code_prefix (VARCHAR) | unique=2246
+- total_orders_handled (BIGINT) | unique=251
+- avg_item_price (DOUBLE) | unique=2501
+
+============================================================
+TABLE: gold_main_gold.fact_orders
+============================================================
+- order_id (VARCHAR) | unique=99441
+- customer_id (VARCHAR) | unique=99441
+- item_count (BIGINT) | unique=18
+- total_item_value (DOUBLE) | unique=7052
+- total_freight_value (DOUBLE) | unique=6798
+- total_order_value (DOUBLE) | unique=26665
+- review_score (BIGINT) | unique=5
+- order_status (VARCHAR) | unique=8 | values=delivered, created, processing, shipped, invoiced, canceled, unavailable, approved
+- order_purchase_timestamp (TIMESTAMP) | unique=98875
+- order_approved_at (TIMESTAMP) | unique=90733
+- order_delivered_carrier_date (TIMESTAMP) | unique=81018
+- order_delivered_customer_date (TIMESTAMP) | unique=95664
+- order_estimated_delivery_date (TIMESTAMP) | unique=459
+- actual_delivery_days (BIGINT) | unique=144
+- delivery_delay_days (BIGINT) | unique=198
+- delivery_status (VARCHAR) | unique=2 | values=on_time, late
+- order_year (BIGINT) | unique=3
+- order_month (BIGINT) | unique=12
+- order_month_date (DATE) | unique=25
+
+============================================================
+TABLE: gold_main_gold.fact_payments
+============================================================
+- order_id (VARCHAR) | unique=99437
+- payment_sequential (BIGINT) | unique=29
+- payment_type (VARCHAR) | unique=4 | values=voucher, credit_card, boleto, debit_card
+- payment_installments (BIGINT) | unique=24
+- payment_value (DOUBLE) | unique=27655
+- payment_value_raw (DOUBLE) | unique=29076
+- customer_id (VARCHAR) | unique=99437
+- order_status (VARCHAR) | unique=8 | values=delivered, created, processing, invoiced, shipped, canceled, unavailable, approved
+- order_purchase_timestamp (TIMESTAMP) | unique=98871
+- order_year (BIGINT) | unique=3
+- order_month (BIGINT) | unique=12
+- order_month_date (DATE) | unique=25
+
+============================================================
+TABLE: silver.category_map
+============================================================
+- category_pt (VARCHAR) | unique=64
+- category_en (VARCHAR) | unique=64
+
+============================================================
+TABLE: silver.customers
+============================================================
+- customer_id (VARCHAR) | unique=99441
+- customer_unique_id (VARCHAR) | unique=96096
+- customer_zip_code_prefix (VARCHAR) | unique=14994
+- customer_city (VARCHAR) | unique=4119
+- customer_state (VARCHAR) | unique=27 | values=PA, RJ, RN, PR, SE, DF, TO, GO, RS, AC, BA, ES, PB, MS, AM, MG, MA, SP, MT, AL
+
+============================================================
+TABLE: silver.order_items
+============================================================
+- order_id (VARCHAR) | unique=98666
+- order_item_id (BIGINT) | unique=21
+- product_id (VARCHAR) | unique=32951
+- seller_id (VARCHAR) | unique=3095
+- shipping_limit_date (TIMESTAMP) | unique=93318
+- price_raw (DOUBLE) | unique=5968
+- price (DOUBLE) | unique=5429
+- freight_value_raw (DOUBLE) | unique=6999
+- freight_value (DOUBLE) | unique=5681
+- price_capped (BOOLEAN) | unique=2
+- freight_capped (BOOLEAN) | unique=2
+
+============================================================
+TABLE: silver.orders
+============================================================
+- order_id (VARCHAR) | unique=99441
+- customer_id (VARCHAR) | unique=99441
+- order_status (VARCHAR) | unique=8 | values=delivered, created, invoiced, processing, unavailable, approved, canceled, shipped
+- order_purchase_timestamp (TIMESTAMP) | unique=98875
+- order_approved_at (TIMESTAMP) | unique=90733
+- order_delivered_carrier_date (TIMESTAMP) | unique=81018
+- order_delivered_customer_date (TIMESTAMP) | unique=95664
+- order_estimated_delivery_date (TIMESTAMP) | unique=459
+
+============================================================
+TABLE: silver.payments
+============================================================
+- order_id (VARCHAR) | unique=99437
+- payment_sequential (BIGINT) | unique=29
+- payment_type (VARCHAR) | unique=4 | values=voucher, credit_card, boleto, debit_card
+- payment_installments (BIGINT) | unique=24
+- payment_value_raw (DOUBLE) | unique=29076
+- payment_value (DOUBLE) | unique=27655
+- value_capped (BOOLEAN) | unique=2
+
+============================================================
+TABLE: silver.products
+============================================================
+- product_id (VARCHAR) | unique=32951
+- product_category_pt (VARCHAR) | unique=74
+- product_category_en (VARCHAR) | unique=74
+- product_name_length (DOUBLE) | unique=66
+- product_desc_length (DOUBLE) | unique=2960
+- product_photos_qty (DOUBLE) | unique=19
+- product_weight_g (DOUBLE) | unique=2204
+- product_length_cm (DOUBLE) | unique=99
+- product_height_cm (DOUBLE) | unique=102
+- product_width_cm (DOUBLE) | unique=95
+
+============================================================
+TABLE: silver.reviews
+============================================================
+- review_id (VARCHAR) | unique=98410
+- order_id (VARCHAR) | unique=98149
+- review_score (BIGINT) | unique=5
+- review_comment_title (VARCHAR) | unique=4528
+- review_comment_message (VARCHAR) | unique=36160
+- review_creation_date (TIMESTAMP) | unique=636
+- review_answer_timestamp (TIMESTAMP) | unique=98248
+
+============================================================
+TABLE: silver.sellers
+============================================================
+- seller_id (VARCHAR) | unique=3095
+- seller_zip_code_prefix (VARCHAR) | unique=2246
+- seller_city (VARCHAR) | unique=611
+- seller_state (VARCHAR) | unique=23 | values=PA, PE, ES, BA, PB, RS, GO, AC, CE, RO, DF, MS, AM, RJ, PR, RN, PI, MG, MA, SC

@@ -1,0 +1,124 @@
+OLIST JOIN RULES
+
+=================================================
+CUSTOMER JOIN
+=================================================
+
+NEVER JOIN:
+
+fact_orders.customer_id
+=
+dim_customer.customer_key
+
+OR
+
+fact_payments.customer_id
+=
+dim_customer.customer_key
+
+Reason:
+customer_id != customer_unique_id
+
+Correct:
+
+fact_orders
+→ silver.customers
+→ dim_customer
+
+Example:
+
+FROM gold_main_gold.fact_orders fo
+JOIN silver.customers sc
+    ON fo.customer_id = sc.customer_id
+JOIN gold_main_gold.dim_customer dc
+    ON sc.customer_unique_id = dc.customer_key
+
+=================================================
+PRODUCT JOIN
+=================================================
+
+fact_orders does not contain product_id.
+
+To reach product:
+
+fact_orders
+→ silver.order_items
+→ dim_product
+
+Example:
+
+FROM gold_main_gold.fact_orders fo
+JOIN silver.order_items oi
+    ON fo.order_id = oi.order_id
+JOIN gold_main_gold.dim_product dp
+    ON oi.product_id = dp.product_id
+
+=================================================
+SELLER JOIN
+=================================================
+
+fact_orders does not contain seller_id.
+
+To reach seller:
+
+fact_orders
+→ silver.order_items
+→ dim_seller
+
+Example:
+
+FROM gold_main_gold.fact_orders fo
+JOIN silver.order_items oi
+    ON fo.order_id = oi.order_id
+JOIN gold_main_gold.dim_seller ds
+    ON oi.seller_id = ds.seller_id
+
+=================================================
+PAYMENT JOIN
+=================================================
+
+fact_orders
+↔ fact_payments
+
+Join directly by order_id
+
+Example:
+
+JOIN gold_main_gold.fact_payments fp
+ON fo.order_id = fp.order_id
+
+=================================================
+IMPORTANT
+
+If the question contains:
+
+customer
+customer state
+customer city
+
+ALWAYS use:
+
+silver.customers
++
+dim_customer
+
+If the question contains:
+
+product
+category
+
+ALWAYS use:
+
+silver.order_items
++
+dim_product
+
+If the question contains:
+
+seller
+
+ALWAYS use:
+
+silver.order_items
++
+dim_seller
