@@ -270,7 +270,6 @@ with tab3:
 with tab4:
 
     st.subheader("Customer Segmentation")
-
     st.caption(
         "RFM analysis to identify customer groups, revenue contribution, and retention opportunities."
     )
@@ -278,123 +277,217 @@ with tab4:
     with st.spinner("Loading data..."):
         df = load_rfm_raw().copy()
 
-    # ── RFM Scoring ──────────────────────────────
+    # ── RFM Scoring (kept for export / reference) ────────────
     df["R_score"] = pd.qcut(
-        df["recency"].rank(method="first"),
-        5,
-        labels=[5,4,3,2,1]
+        df["recency"].rank(method="first"), 5, labels=[5, 4, 3, 2, 1]
     ).astype(int)
-
     df["F_score"] = pd.qcut(
-        df["frequency"].rank(method="first"),
-        5,
-        labels=[1,2,3,4,5]
+        df["frequency"].rank(method="first"), 5, labels=[1, 2, 3, 4, 5]
     ).astype(int)
-
     df["M_score"] = pd.qcut(
-        df["monetary"].rank(method="first"),
-        5,
-        labels=[1,2,3,4,5]
+        df["monetary"].rank(method="first"), 5, labels=[1, 2, 3, 4, 5]
     ).astype(int)
+    df["RFM_score"] = df["R_score"] + df["F_score"] + df["M_score"]
 
-    df["RFM_score"] = (
-        df["R_score"]
-        + df["F_score"]
-        + df["M_score"]
+    # ── Split repeat vs one-time customers ───────────────────
+    # Olist is a marketplace where the large majority of customers only
+    # purchase once, so frequency carries almost no variance overall.
+    # Clustering repeat and one-time customers together produces clusters
+    # that differ mainly by recency/monetary while frequency stays flat
+    # across all of them, making frequency-based labels meaningless.
+    df["is_repeat"] = df["frequency"] >= 2
+    df_repeat = df[df["is_repeat"]].copy()
+    df_onetime = df[~df["is_repeat"]].copy()
+
+    one_time_ratio = (df["frequency"] == 1).mean()
+    st.caption(
+        f"{one_time_ratio*100:.1f}% of customers have a single order. "
+        f"Repeat customers ({len(df_repeat):,}) are clustered with full RFM; "
+        f"one-time customers ({len(df_onetime):,}) are segmented by recency and "
+        f"monetary value only, since frequency carries no information for them."
     )
 
-    # ── KMeans cố định K=6 ───────────────────────
-    K = 6
-
-    X = StandardScaler().fit_transform(
-        df[["recency","frequency","monetary"]]
+    # ── Elbow Method on repeat customers only ────────────────
+    X_repeat = StandardScaler().fit_transform(
+        df_repeat[["recency", "frequency", "monetary"]]
     )
 
-    df["cluster"] = KMeans(
-        n_clusters=K,
-        random_state=42,
-        n_init=10
-    ).fit_predict(X)
+    @st.cache_data(ttl=3600)
+    def compute_elbow_repeat(X):
+        K_range = range(2, min(10, len(X)))
+        inertias = []
+        for k in K_range:
+            km = KMeans(n_clusters=k, random_state=42, n_init=10)
+            km.fit(X)
+            inertias.append(km.inertia_)
+        return list(K_range), inertias
+
+    K_range, inertias = compute_elbow_repeat(X_repeat)
+    diffs2 = np.diff(np.diff(inertias))
+    K_optimal = int(K_range[np.argmax(diffs2) + 1]) if len(diffs2) else K_range[0]
+
+    with st.expander("Elbow Method (Repeat Customers)", expanded=False):
+        elbow_df = pd.DataFrame({"K": K_range, "Inertia": inertias})
+        fig = px.line(
+            elbow_df, x="K", y="Inertia", markers=True,
+            color_discrete_sequence=["#3498db"],
+            title=f"Elbow Curve — Optimal K = {K_optimal}",
+        )
+        fig.add_vline(x=K_optimal, line_dash="dash", line_color="#e74c3c",
+                      annotation_text=f"K={K_optimal}", annotation_position="top right")
+        fig.add_scatter(
+            x=[K_optimal], y=[inertias[K_range.index(K_optimal)]],
+            mode="markers", marker=dict(size=14, color="#e74c3c", symbol="star"),
+            name=f"Best K={K_optimal}",
+        )
+        fig.update_layout(height=360, xaxis=dict(tickmode="linear"))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── KMeans on repeat customers only ──────────────────────
+    df_repeat["cluster"] = KMeans(
+        n_clusters=K_optimal, random_state=42, n_init=10
+    ).fit_predict(X_repeat)
 
     cluster_profile = (
-        df.groupby("cluster")
-          .agg(
-              Avg_Recency=("recency","mean"),
-              Avg_Frequency=("frequency","mean"),
-              Avg_Monetary=("monetary","mean"),
-              Customers=("customer_unique_id","count")
-          )
-          .round(2)
-          .reset_index()
+        df_repeat.groupby("cluster")
+        .agg(
+            Avg_Recency=("recency", "mean"),
+            Avg_Frequency=("frequency", "mean"),
+            Avg_Monetary=("monetary", "mean"),
+            Customers=("customer_unique_id", "count"),
+        )
+        .round(2)
     )
 
-    # ── Segment Mapping ──────────────────────────
-    label_map = {
-        2: "Champions",
-        3: "Loyal",
-        4: "Returning",
-        1: "At Risk",
-        0: "New",
-        5: "Lost"
+    # ── Dynamic segment labeling ──────────────────────────────
+    # Cluster index order from KMeans is arbitrary and can shift any time
+    # the underlying data changes, so labels must be derived from each
+    # cluster's actual Recency/Frequency/Monetary values, not from a fixed
+    # {cluster_id: label} lookup.
+    # NOTE: thresholds come from the customer-level distribution
+    # (df_repeat), not from the small set of cluster averages. With a low
+    # K (e.g. K=3), taking median/quantile over just the cluster means is
+    # statistically fragile and can tie exactly with one cluster's own
+    # value — causing a strict "<" comparison to silently fail and push
+    # the best-performing cluster into the wrong bucket (e.g. "At Risk"
+    # instead of "Champions"/"Loyal").
+    r_median = df_repeat["recency"].median()
+    f_high = df_repeat["frequency"].quantile(0.60)
+    m_high = df_repeat["monetary"].quantile(0.60)
+
+    def label_repeat_cluster(row):
+        r, f, m = row["Avg_Recency"], row["Avg_Frequency"], row["Avg_Monetary"]
+        if m >= m_high and f >= f_high and r < r_median:
+            return "Champions"
+        elif f >= f_high and r < r_median:
+            return "Loyal"
+        elif f >= f_high and r >= r_median:
+            return "At Risk"
+        elif r < r_median:
+            return "Promising"
+        else:
+            return "Lapsing Repeat"
+
+    cluster_profile["Segment"] = cluster_profile.apply(label_repeat_cluster, axis=1)
+
+    # Resolve duplicate labels: the weaker cluster (lower combined rank)
+    # falls back to a related but distinct name instead of sharing a label.
+    FALLBACK_NAMES = {
+        "Champions": "High-Value",
+        "Loyal": "Steady Repeat",
+        "At Risk": "Needs Attention",
+        "Promising": "Emerging",
+        "Lapsing Repeat": "Dormant Repeat",
     }
-
-    df["segment"] = df["cluster"].map(label_map)
-
-    cluster_profile["Segment"] = (
-        cluster_profile["cluster"]
-        .map(label_map)
+    cluster_profile["rfm_combined"] = (
+        cluster_profile["Avg_Monetary"].rank(ascending=True)
+        + cluster_profile["Avg_Frequency"].rank(ascending=True)
+        + cluster_profile["Avg_Recency"].rank(ascending=False)
     )
+    final_labels = cluster_profile["Segment"].copy()
+    for seg in cluster_profile["Segment"].unique():
+        dupl_idx = cluster_profile[cluster_profile["Segment"] == seg].index.tolist()
+        if len(dupl_idx) > 1:
+            sorted_idx = (
+                cluster_profile.loc[dupl_idx, "rfm_combined"]
+                .sort_values(ascending=False)
+                .index
+            )
+            for rank, idx in enumerate(sorted_idx):
+                if rank > 0:
+                    final_labels[idx] = FALLBACK_NAMES.get(seg, f"{seg} B")
+    cluster_profile["Segment"] = final_labels
 
-    cluster_profile = cluster_profile[
-        [
-            "cluster",
-            "Segment",
-            "Avg_Recency",
-            "Avg_Frequency",
-            "Avg_Monetary",
-            "Customers"
-        ]
-    ]
+    label_map = cluster_profile["Segment"].to_dict()
+    df_repeat["segment"] = df_repeat["cluster"].map(label_map)
 
-    SEGMENT_ORDER = [
-        "Champions",
-        "Loyal",
-        "Returning",
-        "New",
-        "At Risk",
-        "Lost"
-    ]
+    # ── One-time customers: segmented by recency and monetary only ──
+    r_q = df_onetime["recency"].quantile([0.33, 0.66]).values
+    m_med = df_onetime["monetary"].median()
 
-    # ── Cluster Profile ──────────────────────────
-    st.subheader("Cluster Profile")
+    def label_onetime(row):
+        r, m = row["recency"], row["monetary"]
+        if r <= r_q[0]:
+            recency_tier = "New"
+        elif r <= r_q[1]:
+            recency_tier = "Cooling"
+        else:
+            recency_tier = "Lost"
+        spend_tier = "High-Spend" if m >= m_med else "Low-Spend"
+        return f"{recency_tier} One-Time ({spend_tier})"
 
+    df_onetime["segment"] = df_onetime.apply(label_onetime, axis=1)
+
+    # ── Merge full customer base back together ───────────────
+    df = pd.concat([df_repeat, df_onetime], ignore_index=True)
+
+    onetime_segment_order = sorted(
+        df_onetime["segment"].unique(),
+        key=lambda s: (0 if "New" in s else 1 if "Cooling" in s else 2, "Low" in s),
+    )
+    SEGMENT_ORDER = list(
+        cluster_profile.sort_values("rfm_combined", ascending=False)["Segment"]
+    ) + onetime_segment_order
+
+    # ── Cluster Profile (repeat customers) ────────────────────
+    st.subheader("Cluster Profile (Repeat Customers)")
     st.dataframe(
-        cluster_profile,
+        cluster_profile.reset_index()[
+            ["cluster", "Segment", "Avg_Recency", "Avg_Frequency", "Avg_Monetary", "Customers"]
+        ],
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
     )
+
+    # ── One-time customer summary ─────────────────────────────
+    st.subheader("Segment Summary (One-Time Customers)")
+    onetime_summary = (
+        df_onetime.groupby("segment")
+        .agg(
+            Customers=("customer_unique_id", "count"),
+            Avg_Recency=("recency", "mean"),
+            Avg_Monetary=("monetary", "mean"),
+        )
+        .round(1)
+        .reindex(onetime_segment_order)
+        .reset_index()
+    )
+    st.dataframe(onetime_summary, use_container_width=True, hide_index=True)
 
     # ── KPI ──────────────────────────────────────
     seg_counts = (
         df["segment"]
-          .value_counts()
-          .reindex(SEGMENT_ORDER)
-          .dropna()
+        .value_counts()
+        .reindex([s for s in SEGMENT_ORDER if s in df["segment"].unique()])
+        .dropna()
     )
 
-    st.metric(
-        "Total Customers",
-        f"{len(df):,}"
-    )
+    st.metric("Total Customers", f"{len(df):,}")
 
-    cols = st.columns(len(seg_counts))
-
+    n_cols = min(len(seg_counts), 6)
+    cols = st.columns(n_cols)
     for i, (seg, cnt) in enumerate(seg_counts.items()):
-        cols[i].metric(
-            seg,
-            f"{cnt:,}",
-            f"{cnt/len(df)*100:.1f}%"
-        )
+        cols[i % n_cols].metric(seg, f"{cnt:,}", f"{cnt/len(df)*100:.1f}%")
 
     st.divider()
 
@@ -402,243 +495,134 @@ with tab4:
     col1, col2 = st.columns(2)
 
     with col1:
-
         st.subheader("Customer Distribution by Segment")
-
         fig = px.pie(
-            df,
-            names="segment",
-            hole=0.4,
-            category_orders={
-                "segment": SEGMENT_ORDER
-            },
-            color_discrete_sequence=px.colors.qualitative.Set2
+            df, names="segment", hole=0.4,
+            category_orders={"segment": list(seg_counts.index)},
+            color_discrete_sequence=px.colors.qualitative.Set2,
         )
-
-        fig.update_traces(
-            textinfo="label+percent"
-        )
-
-        fig.update_layout(height=380)
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+        fig.update_traces(textinfo="label+percent")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-
         st.subheader("Monetary vs Recency")
-
-        sample = df.sample(
-            min(3000, len(df)),
-            random_state=42
-        )
-
+        sample = df.sample(min(3000, len(df)), random_state=42)
         fig = px.scatter(
-            sample,
-            x="recency",
-            y="monetary",
-            color="segment",
-            size="frequency",
-            opacity=0.7,
-            category_orders={
-                "segment": SEGMENT_ORDER
-            },
+            sample, x="recency", y="monetary",
+            color="segment", size="frequency", opacity=0.7,
+            category_orders={"segment": list(seg_counts.index)},
             color_discrete_sequence=px.colors.qualitative.Set2,
-            labels={
-                "recency":"Recency (days)",
-                "monetary":"Monetary (R$)"
-            }
+            labels={"recency": "Recency (days)", "monetary": "Monetary (R$)"},
         )
-
-        fig.update_xaxes(
-            autorange="reversed"
-        )
-
-        fig.update_layout(height=380)
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+        fig.update_xaxes(autorange="reversed")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
 
     # ── Segment Characteristics ─────────────────
     st.subheader("Segment Characteristics")
-
     summary = (
         df.groupby("segment")
-          .agg(
-              Customers=("customer_unique_id","count"),
-              Avg_Recency=("recency","mean"),
-              Avg_Frequency=("frequency","mean"),
-              Avg_Monetary=("monetary","mean"),
-              Total_Revenue=("monetary","sum")
-          )
-          .round(1)
-          .reset_index()
+        .agg(
+            Customers=("customer_unique_id", "count"),
+            Avg_Recency=("recency", "mean"),
+            Avg_Frequency=("frequency", "mean"),
+            Avg_Monetary=("monetary", "mean"),
+            Total_Revenue=("monetary", "sum"),
+        )
+        .round(1)
+        .reindex([s for s in SEGMENT_ORDER if s in df["segment"].unique()])
+        .reset_index()
     )
-
-    summary["segment"] = pd.Categorical(
-        summary["segment"],
-        categories=SEGMENT_ORDER,
-        ordered=True
-    )
-
-    summary = summary.sort_values("segment")
-
-    summary["Total_Revenue"] = (
-        summary["Total_Revenue"]
-        .apply(lambda x: f"R${x:,.0f}")
-    )
-
-    st.dataframe(
-        summary,
-        use_container_width=True,
-        hide_index=True
-    )
+    summary["Total_Revenue"] = summary["Total_Revenue"].apply(lambda x: f"R${x:,.0f}")
+    st.dataframe(summary, use_container_width=True, hide_index=True)
 
     # ── Revenue Contribution ────────────────────
     st.subheader("Revenue Contribution by Segment")
-
-    revenue_seg = (
-        df.groupby("segment")["monetary"]
-          .sum()
-          .reset_index()
-    )
-
+    revenue_seg = df.groupby("segment")["monetary"].sum().reset_index()
     revenue_seg["segment"] = pd.Categorical(
         revenue_seg["segment"],
-        categories=SEGMENT_ORDER,
-        ordered=True
+        categories=[s for s in SEGMENT_ORDER if s in df["segment"].unique()],
+        ordered=True,
     )
-
     revenue_seg = revenue_seg.sort_values("segment")
-
-    revenue_seg["pct"] = (
-        revenue_seg["monetary"]
-        / revenue_seg["monetary"].sum()
-        * 100
-    ).round(1)
+    revenue_seg["pct"] = (revenue_seg["monetary"] / revenue_seg["monetary"].sum() * 100).round(1)
 
     col1, col2 = st.columns(2)
 
     with col1:
-
         fig = px.bar(
-            revenue_seg,
-            x="segment",
-            y="monetary",
-            color="segment",
-            text="pct",
-            category_orders={
-                "segment": SEGMENT_ORDER
-            },
-            color_discrete_sequence=px.colors.qualitative.Set2
+            revenue_seg, x="segment", y="monetary", color="segment", text="pct",
+            category_orders={"segment": list(revenue_seg["segment"])},
+            color_discrete_sequence=px.colors.qualitative.Set2,
         )
-
-        fig.update_traces(
-            texttemplate="%{text}%",
-            textposition="outside"
-        )
-
-        fig.update_layout(
-            height=380,
-            showlegend=False
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+        fig.update_traces(texttemplate="%{text}%", textposition="outside")
+        fig.update_layout(height=380, showlegend=False, xaxis_tickangle=-20)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-
         fig = px.pie(
-            revenue_seg,
-            names="segment",
-            values="monetary",
-            category_orders={
-                "segment": SEGMENT_ORDER
-            },
-            color_discrete_sequence=px.colors.qualitative.Set2,
-            hole=0.4
+            revenue_seg, names="segment", values="monetary",
+            category_orders={"segment": list(revenue_seg["segment"])},
+            color_discrete_sequence=px.colors.qualitative.Set2, hole=0.4,
         )
-
         fig.update_layout(height=380)
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
+        st.plotly_chart(fig, use_container_width=True)
 
     # ── RFM Score Distribution ──────────────────
     st.subheader("RFM Score Distribution by Segment")
-
     fig = px.box(
-        df,
-        x="segment",
-        y="RFM_score",
-        color="segment",
-        category_orders={
-            "segment": SEGMENT_ORDER
-        },
-        color_discrete_sequence=px.colors.qualitative.Set2
+        df, x="segment", y="RFM_score", color="segment",
+        category_orders={"segment": [s for s in SEGMENT_ORDER if s in df["segment"].unique()]},
+        color_discrete_sequence=px.colors.qualitative.Set2,
     )
-
-    fig.update_layout(
-        height=380,
-        showlegend=False
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+    fig.update_layout(height=380, showlegend=False, xaxis_tickangle=-20)
+    st.plotly_chart(fig, use_container_width=True)
 
     # ── Marketing Action Recommendations ────────
     st.subheader("Marketing Action Recommendations")
 
-    actions = {
-        "Champions": "Offer VIP perks, invite to loyalty program, encourage reviews",
-        "Loyal": "Upsell premium products, send birthday offers, retain with reward points",
-        "Returning": "Remind about viewed products, suggest related items",
-        "New": "Good onboarding, send guides, offer discount on second purchase",
-        "At Risk": "Send win-back emails, offer discount vouchers to re-engage",
-        "Lost": "Final re-engagement campaign, stop marketing if no response",
+    ACTIONS = {
+        "Champions": "Offer VIP perks, invite to loyalty program, encourage reviews and referrals.",
+        "High-Value": "Send personalized offers to move them into the Champions tier.",
+        "Loyal": "Upsell premium products, send birthday offers, retain with reward points.",
+        "Steady Repeat": "Encourage a third or fourth purchase with targeted discounts.",
+        "At Risk": "Send win-back emails, offer discount vouchers, highlight new arrivals.",
+        "Needs Attention": "Proactive outreach with personalized recommendations.",
+        "Promising": "Send recommendations based on past purchases, keep monitoring.",
+        "Emerging": "Light-touch nurture content and small incentives.",
+        "Lapsing Repeat": "Strong re-engagement campaign; deprioritize if no response.",
+        "Dormant Repeat": "Low-cost re-engagement (email only).",
     }
 
-    for seg in SEGMENT_ORDER:
-        if seg in seg_counts.index:
-            st.info(f"**{seg}** — {actions[seg]}")
+    def get_action(seg):
+        if seg in ACTIONS:
+            return ACTIONS[seg]
+        if "New One-Time" in seg:
+            return "Good onboarding, send guides and tips, offer a discount on the second purchase."
+        if "Cooling One-Time" in seg:
+            return "Remind them of viewed products with a limited-time offer to drive a second purchase."
+        if "Lost One-Time" in seg:
+            return "Low-priority, low-cost re-engagement only; focus budget on higher-value segments."
+        return "Monitor and refine targeting."
+
+    for seg in [s for s in SEGMENT_ORDER if s in seg_counts.index]:
+        st.info(f"**{seg}** — {get_action(seg)}")
 
     # ── Export ──────────────────────────────────
     st.divider()
-
     st.subheader("Export Results")
 
     export_df = df[
         [
-            "customer_unique_id",
-            "customer_state",
-            "recency",
-            "frequency",
-            "monetary",
-            "R_score",
-            "F_score",
-            "M_score",
-            "RFM_score",
-            "segment"
+            "customer_unique_id", "customer_state", "recency", "frequency", "monetary",
+            "R_score", "F_score", "M_score", "RFM_score", "is_repeat", "segment",
         ]
     ]
-
-    csv = export_df.to_csv(
-        index=False
-    ).encode("utf-8")
-
+    csv = export_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         "Download RFM Results (.csv)",
         data=csv,
         file_name="rfm_segments.csv",
-        mime="text/csv"
+        mime="text/csv",
     )
